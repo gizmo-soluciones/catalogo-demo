@@ -146,6 +146,30 @@ header.tienda::after{
 
 /* ---------- Carrito flotante al scrollear ---------- */
 
+/* ---------- Aviso de "actualizando stock" ---------- */
+
+.aviso-cargando-stock{
+  position:fixed;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%) translateY(-14px);
+  background:var(--verde-oscuro);
+  color:white;
+  font-size:12px;
+  font-weight:600;
+  padding:7px 14px;
+  border-radius:20px;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s ease, transform .2s ease;
+  z-index:30;
+  box-shadow:0 4px 10px rgba(0,0,0,.2);
+}
+.aviso-cargando-stock.visible{
+  opacity:1;
+  transform:translateX(-50%) translateY(0);
+}
+
 .fab-carrito{
   position:fixed;
   right:18px;
@@ -900,6 +924,8 @@ main{
 </head>
 <body>
 
+<div class="aviso-cargando-stock" id="avisoCargandoStock">🔄 Actualizando disponibilidad...</div>
+
 <header class="tienda">
   <div class="header-inner">
     <div class="header-top">
@@ -1002,6 +1028,18 @@ const TIENDA = {
   // de "últimas unidades" en su tarjeta. No afecta a los productos que usan
   // stock:true / stock:false en vez de un número.
   umbralStockBajo: 3,
+  // STOCK EN VIVO (opcional): si el comercio quiere manejar su propio stock
+  // desde una planilla de Google Sheets, sin depender de que vos edites el
+  // código, pegá acá el link de esa planilla publicada como CSV.
+  // Cómo conseguir ese link: en Google Sheets → Archivo → Compartir →
+  // Publicar en la Web → elegís la hoja → formato "Valores separados por
+  // comas (.csv)" → Publicar → copiás el link que te da.
+  // La planilla tiene que tener 2 columnas: "id" y "stock" (con esos
+  // nombres en la primera fila), y de ahí para abajo, una fila por producto
+  // con su id (el mismo que usa el código) y la cantidad disponible.
+  // Si dejás esto en "" (vacío), el catálogo sigue usando el stock que está
+  // escrito en cada producto más abajo, como hasta ahora — no cambia nada.
+  stockEnVivoUrl: "",
   // Horario de atención, para mostrar si el comercio está abierto o cerrado.
   // Formato 24hs, "HH:MM". Cada día puede tener una o dos franjas horarias
   // (mañana y tarde, para el clásico horario con siesta). Si el comercio no
@@ -1416,6 +1454,41 @@ function estaAbierto(fecha = new Date()){
   });
 }
 
+// ---------- Stock en vivo (opcional, vía Google Sheets) ----------
+async function sincronizarStockEnVivo(){
+  if(!TIENDA.stockEnVivoUrl) return; // función apagada si no se configuró nada
+
+  const aviso = document.getElementById("avisoCargandoStock");
+  if(aviso) aviso.classList.add("visible");
+
+  try{
+    const respuesta = await fetch(TIENDA.stockEnVivoUrl, { cache: "no-store" });
+    if(!respuesta.ok) throw new Error("La planilla de stock no respondió correctamente.");
+
+    const textoCSV = await respuesta.text();
+    const filas = textoCSV.trim().split("\n").slice(1); // se saltea la fila de encabezados
+
+    filas.forEach(fila => {
+      const columnas = fila.split(",").map(c => c.replace(/"/g, "").trim());
+      const idProducto = parseInt(columnas[0]);
+      const stockNuevo = parseFloat(columnas[1]);
+      const producto = PRODUCTOS.find(p => p.id === idProducto);
+      if(producto && !isNaN(stockNuevo)){
+        producto.stock = stockNuevo;
+      }
+    });
+
+    pintarProductos(); // vuelve a dibujar la grilla con el stock recién llegado
+  }catch(error){
+    // Si algo falla (sin internet, la planilla no está publicada, etc.), no
+    // se rompe nada: el catálogo sigue mostrando el stock que ya tenía
+    // escrito en el código, como si esta función no existiera.
+    console.warn("No se pudo actualizar el stock en vivo, se sigue usando el del código:", error);
+  }finally{
+    if(aviso) aviso.classList.remove("visible");
+  }
+}
+
 function pintarChipHorario(){
   const chip = document.getElementById("chipHorario");
   if(estaAbierto()){
@@ -1811,6 +1884,7 @@ pintarDetalleHorario();
 document.getElementById("chipHorario").onclick = () => {
   document.getElementById("detalleHorario").classList.toggle("abierto");
 };
+sincronizarStockEnVivo();
 </script>
 
 </body>
