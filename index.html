@@ -66,6 +66,16 @@ header.tienda::after{
   opacity:.55;
 }
 
+/* Cuando el comercio tiene imagen de portada, se usa de fondo (el JS le
+   agrega encima una capa verde oscura para que el texto se siga leyendo) */
+header.tienda.con-portada{
+  background-size:cover;
+  background-position:center;
+  padding-top:44px;
+  padding-bottom:44px;
+}
+header.tienda.con-portada::after{ display:none; }
+
 .header-inner{
   max-width:900px;
   margin:0 auto;
@@ -374,18 +384,6 @@ main{
   position:absolute;
   top:8px; left:8px;
   background:var(--coral-oscuro);
-  color:white;
-  font-size:10.5px;
-  font-weight:700;
-  padding:3px 8px;
-  border-radius:6px;
-  z-index:2;
-}
-
-.badge-stockbajo{
-  position:absolute;
-  top:8px; left:8px;
-  background:#C77D00;
   color:white;
   font-size:10.5px;
   font-weight:700;
@@ -939,8 +937,7 @@ main{
     </div>
     <div class="info-envio">
       <span class="chip chip-clickeable" id="chipHorario">🕒 Cargando horario...</span>
-      <span class="chip">🚚 Envío a domicilio (a cargo del cliente)</span>
-      <span class="chip">🏪 Retiro en el local</span>
+      <span class="chip" id="chipApertura" style="display:none;"></span>
     </div>
     <div class="detalle-horario" id="detalleHorario"></div>
   </div>
@@ -1003,9 +1000,16 @@ main{
 const TIENDA = {
   nombre: "Catálogo Demo",
   descripcion: "Ejemplo de catálogo con productos de distintos rubros. Elegí, armá tu pedido y coordinamos todo por WhatsApp.",
+  // Imagen de portada del comercio (OPCIONAL): se usa de fondo en la franja
+  // verde de arriba, con una capa oscura encima para que el texto se lea.
+  // Poné el nombre del archivo guardado en la carpeta "imagenes", ej:
+  // "imagenes/portada.jpg". Conviene una foto horizontal (más o menos
+  // 1200 x 400 px) y liviana (menos de 300 KB). Si lo dejás en "", queda la
+  // franja verde de siempre.
+  imagenPortada: "",
   // Número de WhatsApp SIN el "+", SIN espacios ni guiones.
   // Ejemplo Argentina Chacabuco: código país 54 + 9 + código de área SIN el 0 + número SIN el 15
-  whatsapp: "5492364410707",
+  whatsapp: "5491122334455",
   // Costo de envío EN NÚMEROS (sin puntos ni comas). Ejemplo: 1500
   // Si lo dejás en 0, se muestra el texto de "costoEnvioTexto" en vez de un monto fijo.
   costoEnvio: 1500,
@@ -1023,27 +1027,35 @@ const TIENDA = {
   // Monto mínimo de compra para poder elegir "Envío a domicilio", EN NÚMEROS.
   // Dejalo en 0 si no querés poner un mínimo.
   pedidoMinimoEnvio: 5000,
-  // Cuando un producto tiene el stock cargado como número (ver más abajo,
-  // en PRODUCTOS), si le quedan ESTAS unidades o menos, se muestra un aviso
-  // de "últimas unidades" en su tarjeta. No afecta a los productos que usan
-  // stock:true / stock:false en vez de un número.
-  umbralStockBajo: 3,
+  // Si está en true, cuando el comercio está cerrado (según "horarios", más
+  // abajo) el cliente puede mirar el catálogo pero NO puede agregar
+  // productos ni enviar pedidos hasta que abra. Poné false si el comercio
+  // quiere recibir pedidos a cualquier hora (o para mostrar la demo fuera
+  // de horario).
+  bloquearPedidosCerrado: true,
   // STOCK EN VIVO (opcional): si el comercio quiere manejar su propio stock
   // desde una planilla de Google Sheets, sin depender de que vos edites el
-  // código, pegá acá el link de esa planilla publicada como CSV.
-  // Cómo conseguir ese link: en Google Sheets → Archivo → Compartir →
-  // Publicar en la Web → elegís la hoja → formato "Valores separados por
-  // comas (.csv)" → Publicar → copiás el link que te da.
-  // La planilla tiene que tener 2 columnas: "id" y "stock" (con esos
-  // nombres en la primera fila), y de ahí para abajo, una fila por producto
-  // con su id (el mismo que usa el código) y la cantidad disponible.
+  // código, pegá acá la URL que te da el Apps Script publicado como
+  // aplicación web (termina en "/exec").
+  // La planilla tiene que tener 3 columnas, en este orden, con estos
+  // nombres en la primera fila:
+  //   id       → el mismo id que usa el código para ese producto (obligatorio)
+  //   producto → el nombre del producto, SOLO como referencia visual para
+  //              que al comercio le resulte fácil ubicar la fila. El código
+  //              no lo usa para nada — lo que hace el match es el id.
+  //   stock    → la cantidad disponible
+  // Ojo: el nombre en la columna "producto" no debería llevar comas, porque
+  // se lee como CSV (separado por comas) y una coma de más correría el
+  // resto de la fila.
   // Si dejás esto en "" (vacío), el catálogo sigue usando el stock que está
   // escrito en cada producto más abajo, como hasta ahora — no cambia nada.
-  stockEnVivoUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vS1A2GUI-TUbLQBWLoSk4wIqTUEwKsnEWlLsKiBbLXefG2Et0FkUUB961_oDbpMVd8Gvr84nEA4jPKN/pub?gid=0&single=true&output=csv",
+  stockEnVivoUrl: "",
   // Horario de atención, para mostrar si el comercio está abierto o cerrado.
   // Formato 24hs, "HH:MM". Cada día puede tener una o dos franjas horarias
   // (mañana y tarde, para el clásico horario con siesta). Si el comercio no
   // atiende ese día, dejá la lista vacía: [].
+  // Si el comercio NO quiere mostrar horario, borrá todo el bloque "horarios"
+  // (queda como "siempre abierto" y no aparece el indicador).
   horarios: {
     domingo:   [],
     lunes:     [["08:00", "13:00"], ["17:00", "21:00"]],
@@ -1079,14 +1091,11 @@ const CATEGORIAS = ["Todos", "Destacados", "Verdulería", "Panadería", "Fiambre
 //      "Sin stock" y no se puede agregar. Se actualiza a mano cuando el
 //      comercio te avisa que se quedó sin algo.
 //      CON CANTIDAD: en vez de true, poner directamente el número de
-//      unidades que quedan (ej: stock:4). El producto se sigue pudiendo
-//      agregar mientras el número sea mayor a 0, y cuando llega al umbral
-//      configurado en TIENDA.umbralStockBajo (o menos), aparece un aviso de
-//      "últimas unidades" en la tarjeta, automáticamente. Cuando llega a 0,
-//      se comporta igual que stock:false.
-//      No hace falta que todos los productos de un mismo comercio usen la
-//      misma forma: podés combinar productos con true/false y productos
-//      con número, según lo que pida cada uno.
+//      unidades que quedan (ej: stock:4). El producto se puede agregar
+//      mientras el número sea mayor a 0; cuando llega a 0 se comporta igual
+//      que stock:false. Ojo: el número NO se resta solo con las compras (el
+//      catálogo no tiene memoria compartida entre clientes); se actualiza a
+//      mano, o con la planilla en vivo de "stockEnVivoUrl".
 //    - destacado: OPCIONAL, poner true para que el producto aparezca también
 //      en el filtro "Destacados" (además de en su categoría de siempre), y
 //      con una etiqueta de "Destacado" en la tarjeta para que se note en
@@ -1141,7 +1150,7 @@ const PRODUCTOS = [
   // ---- Indumentaria (ejemplo) ----
   { id:16, nombre:"Remera básica", categoria:"Indumentaria", precio:5500, icono:"👕", imagen:"", stock:true, destacado:true, desc:"Varios talles" },
   { id:17, nombre:"Medias x3", categoria:"Indumentaria", precio:2800, icono:"🧦", imagen:"", stock:true, desc:"" },
-  { id:18, nombre:"Gorra", categoria:"Indumentaria", precio:4200, icono:"🧢", imagen:"", stock:2, desc:"" },
+  { id:18, nombre:"Gorra", categoria:"Indumentaria", precio:4200, icono:"🧢", imagen:"", stock:true, desc:"" },
   { id:19, nombre:"Buzo canguro", categoria:"Indumentaria", precio:9800, icono:"🧥", imagen:"", stock:true, desc:"" },
   { id:20, nombre:"Zapatillas", categoria:"Indumentaria", precio:15000, icono:"👟", imagen:"", stock:false, desc:"" },
 
@@ -1184,6 +1193,15 @@ const PRODUCTOS = [
    ====================================================================== */
 
 document.getElementById("nombreTienda").textContent = TIENDA.nombre;
+
+// Imagen de portada (opcional): de fondo en la franja de arriba, con una
+// capa verde oscura encima para que el texto blanco se siga leyendo.
+if(TIENDA.imagenPortada){
+  const encabezado = document.querySelector("header.tienda");
+  encabezado.classList.add("con-portada");
+  encabezado.style.backgroundImage =
+    `linear-gradient(rgba(18,59,50,.68), rgba(18,59,50,.78)), url("${TIENDA.imagenPortada}")`;
+}
 document.getElementById("descTienda").textContent = TIENDA.descripcion;
 document.title = "Catálogo " + TIENDA.nombre;
 
@@ -1249,7 +1267,7 @@ function pintarProductos(){
 
   lista.forEach(p => {
     const sinStock = typeof p.stock === "number" ? p.stock <= 0 : p.stock === false;
-    const stockBajo = typeof p.stock === "number" && p.stock > 0 && p.stock <= TIENDA.umbralStockBajo;
+    const cerrado = !comercioPermitePedidos();
     const tieneVariantes = p.variantes && p.variantes.length > 0;
     // Lista de fotos del producto: si tiene "imagenes" (varias), se usa esa.
     // Si no, y tiene "imagen" (una sola), se usa como lista de un solo elemento.
@@ -1263,7 +1281,6 @@ function pintarProductos(){
     card.innerHTML = `
       <div class="foto-producto">
         ${sinStock ? '<span class="badge-sinstock">Sin stock</span>' : ""}
-        ${!sinStock && stockBajo ? `<span class="badge-stockbajo">¡Últimas ${p.stock}!</span>` : ""}
         ${p.destacado ? '<span class="badge-destacado">⭐ Destacado</span>' : ""}
         <div class="galeria-img"></div>
         ${imagenes.length > 1 ? `
@@ -1279,7 +1296,7 @@ function pintarProductos(){
           <span class="precio">
             ${tieneVariantes ? `<span class="precio-desde">Desde</span>${formatoPrecio(precioMasBajo)}` : `${formatoPrecio(p.precio)}${p.porPeso ? '<span class="unidad-precio">/kg</span>' : ""}`}
           </span>
-          <button class="btn-agregar" ${sinStock ? "disabled" : ""}>${sinStock ? "Sin stock" : (tieneVariantes ? "Ver opciones" : "Agregar")}</button>
+          <button class="btn-agregar" ${(sinStock || cerrado) ? "disabled" : ""}>${sinStock ? "Sin stock" : (cerrado ? "Cerrado" : (tieneVariantes ? "Ver opciones" : "Agregar"))}</button>
         </div>
       </div>
     `;
@@ -1310,7 +1327,7 @@ function pintarProductos(){
       });
     }
 
-    if(!sinStock){
+    if(!sinStock && !cerrado){
       card.querySelector(".btn-agregar").onclick = () => {
         if(tieneVariantes){ abrirSelectorVariantes(p); }
         else{ agregarAlCarrito(p); }
@@ -1325,6 +1342,7 @@ function pintarProductos(){
 // producto: así, dos variantes del mismo producto (ej. bandeja chica y
 // bandeja grande) quedan como líneas separadas en vez de mezclarse.
 function agregarAlCarrito(producto){
+  if(!comercioPermitePedidos()) return;
   const idCarrito = String(producto.id);
   const existente = carrito.find(i => i.idCarrito === idCarrito);
   if(existente){
@@ -1418,6 +1436,7 @@ function pintarModalVariantes(){
 }
 
 function agregarVarianteAlCarrito(){
+  if(!comercioPermitePedidos()){ cerrarSelectorVariantes(); return; }
   const p = productoEnSeleccion;
   const v = p.variantes[varianteSeleccionada];
   const idCarrito = `${p.id}-v${varianteSeleccionada}`;
@@ -1444,6 +1463,8 @@ function agregarVarianteAlCarrito(){
 const DIAS_SEMANA = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
 
 function estaAbierto(fecha = new Date()){
+  // Si el comercio no cargó horarios, se considera siempre abierto.
+  if(!TIENDA.horarios) return true;
   const diaKey = DIAS_SEMANA[fecha.getDay()];
   const franjas = TIENDA.horarios[diaKey] || [];
   const minutosAhora = fecha.getHours() * 60 + fecha.getMinutes();
@@ -1452,6 +1473,41 @@ function estaAbierto(fecha = new Date()){
     const [hH, mH] = hasta.split(":").map(Number);
     return minutosAhora >= (hD * 60 + mD) && minutosAhora < (hH * 60 + mH);
   });
+}
+
+// Busca la próxima vez que abre el comercio (hoy más tarde, mañana, etc.).
+// Devuelve { dia, hora, diasDespues, minutosFaltantes } o null si no hay.
+function proximaApertura(fecha = new Date()){
+  if(!TIENDA.horarios) return null;
+  const minutosAhora = fecha.getHours() * 60 + fecha.getMinutes();
+  for(let diasDespues = 0; diasDespues <= 7; diasDespues++){
+    const d = new Date(fecha);
+    d.setDate(d.getDate() + diasDespues);
+    const dia = DIAS_SEMANA[d.getDay()];
+    const franjas = (TIENDA.horarios[dia] || []).slice().sort((a, b) => a[0].localeCompare(b[0]));
+    for(const [desde] of franjas){
+      const [h, m] = desde.split(":").map(Number);
+      const inicio = h * 60 + m;
+      if(diasDespues === 0 && inicio <= minutosAhora) continue; // esa franja ya empezó
+      return { dia, hora: desde, diasDespues, minutosFaltantes: diasDespues * 1440 + inicio - minutosAhora };
+    }
+  }
+  return null;
+}
+
+// Texto que se muestra al lado de "Cerrado ahora".
+function textoProximaApertura(fecha = new Date()){
+  const p = proximaApertura(fecha);
+  if(!p) return "";
+  if(p.minutosFaltantes < 60) return "Abre pronto";
+  if(p.diasDespues === 0) return `Abre a las ${p.hora}`;
+  if(p.diasDespues === 1) return `Abre mañana a las ${p.hora}`;
+  return `Abre el ${NOMBRE_DIA[p.dia].toLowerCase()} a las ${p.hora}`;
+}
+
+// ¿Se pueden hacer pedidos ahora? (depende de la opción bloquearPedidosCerrado)
+function comercioPermitePedidos(){
+  return !TIENDA.bloquearPedidosCerrado || estaAbierto();
 }
 
 // ---------- Stock en vivo (opcional, vía Google Sheets) ----------
@@ -1470,8 +1526,12 @@ async function sincronizarStockEnVivo(){
 
     filas.forEach(fila => {
       const columnas = fila.split(",").map(c => c.replace(/"/g, "").trim());
+      // columnas[0] = id (lo que realmente se usa para identificar el producto)
+      // columnas[1] = nombre del producto (solo de referencia visual para el
+      //               comercio en la planilla; el código no lo usa para nada)
+      // columnas[2] = stock
       const idProducto = parseInt(columnas[0]);
-      const stockNuevo = parseFloat(columnas[1]);
+      const stockNuevo = parseFloat(columnas[2]);
       const producto = PRODUCTOS.find(p => p.id === idProducto);
       if(producto && !isNaN(stockNuevo)){
         producto.stock = stockNuevo;
@@ -1489,15 +1549,41 @@ async function sincronizarStockEnVivo(){
   }
 }
 
+let ultimoEstadoAbierto = null;
+
 function pintarChipHorario(){
   const chip = document.getElementById("chipHorario");
-  if(estaAbierto()){
+  const chipApertura = document.getElementById("chipApertura");
+
+  // Sin horarios cargados: no se muestra ningún indicador.
+  if(!TIENDA.horarios){
+    chip.style.display = "none";
+    chipApertura.style.display = "none";
+    return;
+  }
+
+  const abierto = estaAbierto();
+  if(abierto){
     chip.textContent = "🟢 Abierto ahora";
     chip.classList.remove("chip-cerrado");
+    chipApertura.style.display = "none";
   }else{
     chip.textContent = "🔴 Cerrado ahora";
     chip.classList.add("chip-cerrado");
+    const texto = textoProximaApertura();
+    chipApertura.textContent = texto ? "🕒 " + texto : "";
+    chipApertura.style.display = texto ? "" : "none";
   }
+
+  // Si el comercio abrió o cerró mientras el cliente tenía el catálogo
+  // abierto, se actualizan los botones y el carrito.
+  if(ultimoEstadoAbierto !== null && ultimoEstadoAbierto !== abierto){
+    pintarProductos();
+    if(document.getElementById("panelCarrito").classList.contains("abierto")){
+      pintarPanelCarrito();
+    }
+  }
+  ultimoEstadoAbierto = abierto;
 }
 
 // Días en el orden en que se muestran (arranca en lunes, como se usa en
@@ -1507,6 +1593,7 @@ const ORDEN_DIAS_VISIBLE = ["lunes", "martes", "miercoles", "jueves", "viernes",
 const NOMBRE_DIA = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes", sabado:"Sábado", domingo:"Domingo" };
 
 function pintarDetalleHorario(){
+  if(!TIENDA.horarios) return;
   const cont = document.getElementById("detalleHorario");
   cont.innerHTML = ORDEN_DIAS_VISIBLE.map(dia => {
     const franjas = TIENDA.horarios[dia] || [];
@@ -1559,6 +1646,12 @@ function copiarConFallback(texto, callback){
 
 // Texto que se muestra cuando hay productos por peso en el carrito.
 // Se puede editar libremente el redactado sin romper nada.
+// Aviso cuando el comercio está cerrado y no recibe pedidos.
+function avisoCerrado(){
+  const cuando = textoProximaApertura();
+  return `🔴 En este momento el comercio está cerrado y no recibe pedidos.${cuando ? " " + cuando + "." : ""}`;
+}
+
 const AVISO_PESO = "⚖️ Los productos que se venden por peso se cobran según lo que marque la balanza al pesarlos: el monto puede ajustarse un poco respecto a lo que ves acá.";
 
 function quitarDelCarrito(idCarrito){
@@ -1648,13 +1741,15 @@ function pintarVistaLista(){
     };
   });
 
+  const sinAtencion = !comercioPermitePedidos();
   pie.innerHTML = `
+    ${sinAtencion ? `<div class="aviso-envio aviso-alerta">${avisoCerrado()}</div>` : ""}
     ${hayProductoPorPeso() ? `<div class="aviso-envio">${AVISO_PESO}</div>` : ""}
     <div class="fila-subtotal">
       <span>Subtotal</span>
       <span>${formatoPrecio(subtotalCarrito())}</span>
     </div>
-    <button class="btn-continuar" id="btnContinuar">Finalizar pedido</button>
+    <button class="btn-continuar" id="btnContinuar" ${sinAtencion ? "disabled" : ""}>Finalizar pedido</button>
     <button class="btn-secundario" id="btnSeguirComprando">Seguir comprando</button>
   `;
   document.getElementById("btnContinuar").onclick = () => {
@@ -1672,7 +1767,7 @@ function pintarVistaFormulario(){
   cuerpo.innerHTML = `
     <button class="volver" id="btnVolver">← Volver al pedido</button>
 
-    ${!estaAbierto() ? '<div class="aviso-envio">🕒 En este momento el comercio está cerrado. Tu pedido queda guardado y te van a responder ni bien vuelvan a abrir.</div>' : ""}
+    ${!comercioPermitePedidos() ? `<div class="aviso-envio aviso-alerta">${avisoCerrado()}</div>` : ""}
 
     <div class="opciones-entrega">
       <div class="opcion-entrega ${entregaElegida === 'retiro' ? 'activo' : ''}" id="optRetiro">🏪 Retiro en el local</div>
@@ -1770,7 +1865,7 @@ function pintarVistaFormulario(){
       <span>Envío — se paga aparte, al cadete</span>
       <span>${formatoPrecio(envioActual)}</span>
     </div>` : ""}
-    <button class="btn-continuar" id="btnEnviarPedido" ${bloqueadoPorMinimo ? "disabled" : ""}>Enviar pedido por WhatsApp</button>
+    <button class="btn-continuar" id="btnEnviarPedido" ${(bloqueadoPorMinimo || !comercioPermitePedidos()) ? "disabled" : ""}>Enviar pedido por WhatsApp</button>
   `;
   document.getElementById("btnEnviarPedido").onclick = enviarPedidoPorWhatsapp;
 }
@@ -1779,6 +1874,10 @@ function pintarVistaFormulario(){
 let ultimoLinkWhatsapp = "";
 
 function enviarPedidoPorWhatsapp(){
+  if(!comercioPermitePedidos()){
+    alert("El comercio está cerrado en este momento y no recibe pedidos. " + textoProximaApertura());
+    return;
+  }
   const nombre = datosFormulario.nombre.trim();
   const telefono = datosFormulario.telefono.trim();
   const direccion = entregaElegida === "envio" ? datosFormulario.direccion.trim() : "";
