@@ -156,30 +156,6 @@ header.tienda.con-portada::after{ display:none; }
 
 /* ---------- Carrito flotante al scrollear ---------- */
 
-/* ---------- Aviso de "actualizando stock" ---------- */
-
-.aviso-cargando-stock{
-  position:fixed;
-  top:10px;
-  left:50%;
-  transform:translateX(-50%) translateY(-14px);
-  background:var(--verde-oscuro);
-  color:white;
-  font-size:12px;
-  font-weight:600;
-  padding:7px 14px;
-  border-radius:20px;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .2s ease, transform .2s ease;
-  z-index:30;
-  box-shadow:0 4px 10px rgba(0,0,0,.2);
-}
-.aviso-cargando-stock.visible{
-  opacity:1;
-  transform:translateX(-50%) translateY(0);
-}
-
 .fab-carrito{
   position:fixed;
   right:18px;
@@ -864,56 +840,6 @@ main{
   display:block;
 }
 
-.datos-transferencia{
-  background:var(--crema);
-  border-radius:10px;
-  padding:12px 14px;
-  margin-bottom:14px;
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-}
-
-.fila-dato-transferencia{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-}
-
-.etiqueta-dato{
-  display:block;
-  font-size:11px;
-  font-weight:700;
-  color:var(--texto-suave);
-  text-transform:uppercase;
-  letter-spacing:.03em;
-}
-
-.valor-dato{
-  display:block;
-  font-family:'Sora', sans-serif;
-  font-size:17px;
-  font-weight:700;
-  color:var(--verde-oscuro);
-  word-break:break-all;
-}
-
-.btn-copiar{
-  background:var(--papel);
-  border:1px solid var(--linea);
-  color:var(--verde-hoja);
-  font-size:12px;
-  font-weight:700;
-  padding:7px 12px;
-  border-radius:8px;
-  cursor:pointer;
-  flex-shrink:0;
-  white-space:nowrap;
-}
-.btn-copiar:hover{ background:var(--verde-hoja); color:white; }
-.btn-copiar.copiado{ background:var(--verde-hoja); border-color:var(--verde-hoja); color:white; }
-
 @media (max-width:480px){
   .header-top{ flex-direction:column; }
   .btn-carrito{ align-self:flex-start; }
@@ -921,8 +847,6 @@ main{
 </style>
 </head>
 <body>
-
-<div class="aviso-cargando-stock" id="avisoCargandoStock">🔄 Actualizando disponibilidad...</div>
 
 <header class="tienda">
   <div class="header-inner">
@@ -1007,23 +931,25 @@ const TIENDA = {
   // 1200 x 400 px) y liviana (menos de 300 KB). Si lo dejás en "", queda la
   // franja verde de siempre.
   imagenPortada: "",
-  // Número de WhatsApp SIN el "+", SIN espacios ni guiones.
-  // Ejemplo Argentina Chacabuco: código país 54 + 9 + código de área SIN el 0 + número SIN el 15
-  whatsapp: "5492364410707",
+  // Número de WhatsApp del comercio, PARTIDO EN TROZOS: así el número
+  // completo no aparece escrito en el código y los bots que rastrean números
+  // no lo encuentran. Se arma recién cuando el cliente toca "Enviar pedido
+  // por WhatsApp". Sin "+", sin espacios ni guiones.
+  // Formato Argentina: código país 54 + 9 + código de área SIN el 0 + número SIN el 15.
+  // Podés cortarlo donde quieras, mientras juntos den el número completo.
+  // Ejemplo: si el número es 549 11 2233 4455 (sin espacios en la realidad),
+  // se escribe así:  ["549", "11", "2233", "4455"]
+  whatsapp: ["549", "11", "2233", "4455"],
+  // Formas de pago que ofrece este comercio: true = la ofrece, false = no.
+  // Ojo: el catálogo NUNCA muestra datos de cuenta ni cobra nada. Solo le avisa
+  // al comercio qué forma de pago eligió el cliente; el comercio confirma el
+  // pedido (stock, envío) y recién ahí le pasa los datos para pagar.
+  formasPago: { efectivo: true, transferencia: true, tarjeta: false },
   // Costo de envío EN NÚMEROS (sin puntos ni comas). Ejemplo: 1500
   // Si lo dejás en 0, se muestra el texto de "costoEnvioTexto" en vez de un monto fijo.
   costoEnvio: 1500,
   // Este texto solo se usa si costoEnvio está en 0 (envío "a coordinar").
   costoEnvioTexto: "El costo de envío se coordina y lo abona el cliente al recibir el pedido.",
-  // Datos que se muestran cuando el cliente elige pagar por transferencia.
-  // Se muestran grandes y con botón de copiar (para Alias y CBU, así no hay
-  // errores al transferir). Si el comercio no usa transferencia, dejá
-  // alias y cbu en "" — directamente no va a aparecer esa opción de pago.
-  datosTransferencia: {
-    alias: "donalimpia.mp",
-    cbu: "0000003100000012345678",
-    titular: "Nombre Apellido"
-  },
   // Monto mínimo de compra para poder elegir "Envío a domicilio", EN NÚMEROS.
   // Dejalo en 0 si no querés poner un mínimo.
   pedidoMinimoEnvio: 5000,
@@ -1032,24 +958,7 @@ const TIENDA = {
   // productos ni enviar pedidos hasta que abra. Poné false si el comercio
   // quiere recibir pedidos a cualquier hora (o para mostrar la demo fuera
   // de horario).
-  bloquearPedidosCerrado: false,
-  // STOCK EN VIVO (opcional): si el comercio quiere manejar su propio stock
-  // desde una planilla de Google Sheets, sin depender de que vos edites el
-  // código, pegá acá la URL que te da el Apps Script publicado como
-  // aplicación web (termina en "/exec").
-  // La planilla tiene que tener 3 columnas, en este orden, con estos
-  // nombres en la primera fila:
-  //   id       → el mismo id que usa el código para ese producto (obligatorio)
-  //   producto → el nombre del producto, SOLO como referencia visual para
-  //              que al comercio le resulte fácil ubicar la fila. El código
-  //              no lo usa para nada — lo que hace el match es el id.
-  //   stock    → la cantidad disponible
-  // Ojo: el nombre en la columna "producto" no debería llevar comas, porque
-  // se lee como CSV (separado por comas) y una coma de más correría el
-  // resto de la fila.
-  // Si dejás esto en "" (vacío), el catálogo sigue usando el stock que está
-  // escrito en cada producto más abajo, como hasta ahora — no cambia nada.
-  stockEnVivoUrl: "",
+  bloquearPedidosCerrado: true,
   // Horario de atención, para mostrar si el comercio está abierto o cerrado.
   // Formato 24hs, "HH:MM". Cada día puede tener una o dos franjas horarias
   // (mañana y tarde, para el clásico horario con siesta). Si el comercio no
@@ -1058,7 +967,7 @@ const TIENDA = {
   // (queda como "siempre abierto" y no aparece el indicador).
   horarios: {
     domingo:   [],
-    lunes:     [["08:00", "13:00"], ["14:00", "21:00"]],
+    lunes:     [["08:00", "13:00"], ["17:00", "21:00"]],
     martes:    [["08:00", "13:00"], ["17:00", "21:00"]],
     miercoles: [["08:00", "13:00"], ["17:00", "21:00"]],
     jueves:    [["08:00", "13:00"], ["17:00", "21:00"]],
@@ -1095,7 +1004,7 @@ const CATEGORIAS = ["Todos", "Destacados", "Verdulería", "Panadería", "Fiambre
 //      mientras el número sea mayor a 0; cuando llega a 0 se comporta igual
 //      que stock:false. Ojo: el número NO se resta solo con las compras (el
 //      catálogo no tiene memoria compartida entre clientes); se actualiza a
-//      mano, o con la planilla en vivo de "stockEnVivoUrl".
+//      mano.
 //    - destacado: OPCIONAL, poner true para que el producto aparezca también
 //      en el filtro "Destacados" (además de en su categoría de siempre), y
 //      con una etiqueta de "Destacado" en la tarjeta para que se note en
@@ -1205,6 +1114,23 @@ if(TIENDA.imagenPortada){
 document.getElementById("descTienda").textContent = TIENDA.descripcion;
 document.title = "Catálogo " + TIENDA.nombre;
 
+// ---------- Formas de pago ----------
+const ETIQUETAS_PAGO = {
+  efectivo:      { icono:"💵", texto:"Efectivo" },
+  transferencia: { icono:"🏦", texto:"Transferencia" },
+  tarjeta:       { icono:"💳", texto:"Tarjeta" }
+};
+
+// Devuelve las claves de las formas de pago que el comercio dejó en true.
+function formasPagoDisponibles(){
+  const cfg = TIENDA.formasPago || { efectivo:true };
+  return Object.keys(ETIQUETAS_PAGO).filter(clave => cfg[clave] === true);
+}
+
+function primeraFormaPago(){
+  return formasPagoDisponibles()[0] || "";
+}
+
 let carrito = [];
 try{
   const guardado = localStorage.getItem("carrito_" + TIENDA.nombre);
@@ -1215,11 +1141,10 @@ let categoriaActiva = "Todos";
 let textoBusqueda = "";
 let vistaCarrito = "lista"; // "lista" | "formulario"
 let entregaElegida = "retiro"; // "retiro" | "envio"
-let formaPagoElegida = "efectivo"; // "efectivo" | "transferencia"
+let formaPagoElegida = primeraFormaPago(); // "efectivo" | "transferencia" | "tarjeta"
 // Acá se guarda lo que el cliente va escribiendo en el formulario, para que
-// no se pierda si cambia de "retiro" a "envío" (o de forma de pago) y la
-// pantalla se vuelve a dibujar.
-let datosFormulario = { nombre:"", telefono:"", direccion:"", notas:"" };
+// no se pierda si cambia de "retiro" a "envío" y la pantalla se vuelve a dibujar.
+let datosFormulario = { nombre:"", direccion:"", notas:"" };
 
 function guardarCarrito(){
   try{ localStorage.setItem("carrito_" + TIENDA.nombre, JSON.stringify(carrito)); }catch(e){}
@@ -1510,45 +1435,6 @@ function comercioPermitePedidos(){
   return !TIENDA.bloquearPedidosCerrado || estaAbierto();
 }
 
-// ---------- Stock en vivo (opcional, vía Google Sheets) ----------
-async function sincronizarStockEnVivo(){
-  if(!TIENDA.stockEnVivoUrl) return; // función apagada si no se configuró nada
-
-  const aviso = document.getElementById("avisoCargandoStock");
-  if(aviso) aviso.classList.add("visible");
-
-  try{
-    const respuesta = await fetch(TIENDA.stockEnVivoUrl, { cache: "no-store" });
-    if(!respuesta.ok) throw new Error("La planilla de stock no respondió correctamente.");
-
-    const textoCSV = await respuesta.text();
-    const filas = textoCSV.trim().split("\n").slice(1); // se saltea la fila de encabezados
-
-    filas.forEach(fila => {
-      const columnas = fila.split(",").map(c => c.replace(/"/g, "").trim());
-      // columnas[0] = id (lo que realmente se usa para identificar el producto)
-      // columnas[1] = nombre del producto (solo de referencia visual para el
-      //               comercio en la planilla; el código no lo usa para nada)
-      // columnas[2] = stock
-      const idProducto = parseInt(columnas[0]);
-      const stockNuevo = parseFloat(columnas[2]);
-      const producto = PRODUCTOS.find(p => p.id === idProducto);
-      if(producto && !isNaN(stockNuevo)){
-        producto.stock = stockNuevo;
-      }
-    });
-
-    pintarProductos(); // vuelve a dibujar la grilla con el stock recién llegado
-  }catch(error){
-    // Si algo falla (sin internet, la planilla no está publicada, etc.), no
-    // se rompe nada: el catálogo sigue mostrando el stock que ya tenía
-    // escrito en el código, como si esta función no existiera.
-    console.warn("No se pudo actualizar el stock en vivo, se sigue usando el del código:", error);
-  }finally{
-    if(aviso) aviso.classList.remove("visible");
-  }
-}
-
 let ultimoEstadoAbierto = null;
 
 function pintarChipHorario(){
@@ -1606,44 +1492,6 @@ function pintarDetalleHorario(){
 function soloLetras(texto){
   return texto.replace(/[^A-Za-zÀ-ÿñÑ\s]/g, "");
 }
-function soloNumeros(texto){
-  return texto.replace(/[^0-9]/g, "");
-}
-
-function hayDatosTransferencia(){
-  return TIENDA.datosTransferencia && (TIENDA.datosTransferencia.alias || TIENDA.datosTransferencia.cbu);
-}
-
-function activarBotonesCopiar(contenedor){
-  contenedor.querySelectorAll(".btn-copiar").forEach(btn => {
-    btn.onclick = () => {
-      const texto = btn.dataset.copiar;
-      const avisarCopiado = () => {
-        const textoOriginal = "Copiar";
-        btn.textContent = "¡Copiado!";
-        btn.classList.add("copiado");
-        setTimeout(() => { btn.textContent = textoOriginal; btn.classList.remove("copiado"); }, 1500);
-      };
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(texto).then(avisarCopiado).catch(() => copiarConFallback(texto, avisarCopiado));
-      }else{
-        copiarConFallback(texto, avisarCopiado);
-      }
-    };
-  });
-}
-
-function copiarConFallback(texto, callback){
-  const temporal = document.createElement("textarea");
-  temporal.value = texto;
-  temporal.style.position = "fixed";
-  temporal.style.opacity = "0";
-  document.body.appendChild(temporal);
-  temporal.select();
-  try{ document.execCommand("copy"); callback(); }catch(e){}
-  document.body.removeChild(temporal);
-}
-
 // Texto que se muestra cuando hay productos por peso en el carrito.
 // Se puede editar libremente el redactado sin romper nada.
 // Aviso cuando el comercio está cerrado y no recibe pedidos.
@@ -1779,46 +1627,26 @@ function pintarVistaFormulario(){
     ${entregaElegida === 'envio' && TIENDA.pedidoMinimoEnvio > 0 && subtotalCarrito() < TIENDA.pedidoMinimoEnvio ? `
     <div class="aviso-envio aviso-alerta">⚠️ El pedido mínimo para envío a domicilio es ${formatoPrecio(TIENDA.pedidoMinimoEnvio)}. Te faltan ${formatoPrecio(TIENDA.pedidoMinimoEnvio - subtotalCarrito())} — agregá algún producto más o elegí retiro en el local.</div>` : ""}
 
+    ${formasPagoDisponibles().length > 0 ? `
     <div class="opciones-entrega">
-      <div class="opcion-entrega ${formaPagoElegida === 'efectivo' ? 'activo' : ''}" id="optEfectivo">💵 Efectivo</div>
-      ${hayDatosTransferencia() ? `<div class="opcion-entrega ${formaPagoElegida === 'transferencia' ? 'activo' : ''}" id="optTransferencia">🏦 Transferencia</div>` : ""}
-    </div>
+      ${formasPagoDisponibles().map(clave => `
+      <div class="opcion-entrega ${formaPagoElegida === clave ? 'activo' : ''}" data-pago="${clave}">${ETIQUETAS_PAGO[clave].icono} ${ETIQUETAS_PAGO[clave].texto}</div>`).join("")}
+    </div>` : ""}
 
-    ${formaPagoElegida === 'transferencia' && hayDatosTransferencia() ? `
-    <div class="datos-transferencia">
-      ${TIENDA.datosTransferencia.alias ? `
-      <div class="fila-dato-transferencia">
-        <div><span class="etiqueta-dato">Alias</span><span class="valor-dato">${TIENDA.datosTransferencia.alias}</span></div>
-        <button class="btn-copiar" type="button" data-copiar="${TIENDA.datosTransferencia.alias}">Copiar</button>
-      </div>` : ""}
-      ${TIENDA.datosTransferencia.cbu ? `
-      <div class="fila-dato-transferencia">
-        <div><span class="etiqueta-dato">CBU</span><span class="valor-dato">${TIENDA.datosTransferencia.cbu}</span></div>
-        <button class="btn-copiar" type="button" data-copiar="${TIENDA.datosTransferencia.cbu}">Copiar</button>
-      </div>` : ""}
-      ${TIENDA.datosTransferencia.titular ? `
-      <div class="fila-dato-transferencia">
-        <div><span class="etiqueta-dato">Titular</span><span class="valor-dato">${TIENDA.datosTransferencia.titular}</span></div>
-      </div>` : ""}
-    </div>
-    <div class="aviso-envio">📎 Después de transferir, compartí el comprobante con el comercio por este mismo WhatsApp.</div>
-    ` : ""}
+    ${formaPagoElegida === 'transferencia' || formaPagoElegida === 'tarjeta' ? `
+    <div class="aviso-envio">💬 No pagues todavía: el comercio primero confirma que tiene todo lo de tu pedido y después coordinan el pago por WhatsApp.</div>` : ""}
 
     <div class="campo">
-      <label>Nombre y apellido</label>
-      <input type="text" id="campoNombre" placeholder="Tu nombre" value="${datosFormulario.nombre}">
-    </div>
-    <div class="campo">
-      <label>Teléfono</label>
-      <input type="tel" id="campoTelefono" placeholder="Tu número de contacto" value="${datosFormulario.telefono}">
+      <label>Nombre y Apellido</label>
+      <input type="text" id="campoNombre" placeholder="Tu nombre y apellido" value="${datosFormulario.nombre}">
     </div>
     ${entregaElegida === 'envio' ? `
     <div class="campo">
-      <label>Dirección de entrega</label>
+      <label>Dirección</label>
       <input type="text" id="campoDireccion" placeholder="Calle, número, referencia" value="${datosFormulario.direccion}">
     </div>` : ""}
     <div class="campo">
-      <label>Aclaraciones (opcional)</label>
+      <label>Notas (opcional)</label>
       <textarea id="campoNotas" placeholder="Ej: horario preferido, forma de pago, etc.">${datosFormulario.notas}</textarea>
     </div>
   `;
@@ -1826,25 +1654,17 @@ function pintarVistaFormulario(){
   document.getElementById("btnVolver").onclick = () => { vistaCarrito = "lista"; pintarPanelCarrito(); };
   document.getElementById("optRetiro").onclick = () => { entregaElegida = "retiro"; pintarVistaFormulario(); };
   document.getElementById("optEnvio").onclick = () => { entregaElegida = "envio"; pintarVistaFormulario(); };
-  document.getElementById("optEfectivo").onclick = () => { formaPagoElegida = "efectivo"; pintarVistaFormulario(); };
-  const optTransferencia = document.getElementById("optTransferencia");
-  if(optTransferencia){
-    optTransferencia.onclick = () => { formaPagoElegida = "transferencia"; pintarVistaFormulario(); };
-  }
-  activarBotonesCopiar(cuerpo);
+  cuerpo.querySelectorAll("[data-pago]").forEach(el => {
+    el.onclick = () => { formaPagoElegida = el.dataset.pago; pintarVistaFormulario(); };
+  });
 
   // Cada vez que el cliente escribe algo, se guarda al toque en datosFormulario,
-  // así si se vuelve a dibujar la pantalla (por cambiar retiro/envío o la forma
-  // de pago) los datos ya escritos no se pierden.
+  // así si se vuelve a dibujar la pantalla (por cambiar retiro/envío) los
+  // datos ya escritos no se pierden.
   document.getElementById("campoNombre").oninput = e => {
     const limpio = soloLetras(e.target.value);
     if(limpio !== e.target.value) e.target.value = limpio;
     datosFormulario.nombre = limpio;
-  };
-  document.getElementById("campoTelefono").oninput = e => {
-    const limpio = soloNumeros(e.target.value);
-    if(limpio !== e.target.value) e.target.value = limpio;
-    datosFormulario.telefono = limpio;
   };
   document.getElementById("campoNotas").oninput = e => datosFormulario.notas = e.target.value;
   if(entregaElegida === 'envio'){
@@ -1871,7 +1691,14 @@ function pintarVistaFormulario(){
 }
 
 // ---------- Armado y envío del mensaje de WhatsApp ----------
-let ultimoLinkWhatsapp = "";
+let ultimoMensajeWhatsapp = "";
+
+// El número NO está escrito completo en ningún lado: se junta acá, recién
+// cuando el cliente toca el botón de enviar el pedido.
+function construirLinkWhatsapp(mensaje){
+  const numero = Array.isArray(TIENDA.whatsapp) ? TIENDA.whatsapp.join("") : String(TIENDA.whatsapp);
+  return "https://wa.me/" + numero + "?text=" + encodeURIComponent(mensaje);
+}
 
 function enviarPedidoPorWhatsapp(){
   if(!comercioPermitePedidos()){
@@ -1879,12 +1706,11 @@ function enviarPedidoPorWhatsapp(){
     return;
   }
   const nombre = datosFormulario.nombre.trim();
-  const telefono = datosFormulario.telefono.trim();
   const direccion = entregaElegida === "envio" ? datosFormulario.direccion.trim() : "";
   const notas = datosFormulario.notas.trim();
 
-  if(!nombre || !telefono){
-    alert("Por favor completá al menos tu nombre y tu teléfono.");
+  if(!nombre){
+    alert("Por favor completá tu nombre y apellido.");
     return;
   }
   if(entregaElegida === "envio" && !direccion){
@@ -1896,30 +1722,31 @@ function enviarPedidoPorWhatsapp(){
     return;
   }
 
-  let mensaje = `Hola ${TIENDA.nombre}! Quiero hacer este pedido:%0A%0A`;
+  let mensaje = `Hola ${TIENDA.nombre}! Quiero hacer este pedido:\n\n`;
 
   carrito.forEach(i => {
-    mensaje += `• ${formatoCantidad(i)} x ${i.nombre} — ${formatoPrecio(i.precio * i.cantidad)}%0A`;
+    mensaje += `• ${formatoCantidad(i)} x ${i.nombre} — ${formatoPrecio(i.precio * i.cantidad)}\n`;
   });
 
-  mensaje += `%0ATotal de la compra${hayProductoPorPeso() ? " (puede ajustarse al pesar)" : ""}: ${formatoPrecio(subtotalCarrito())}%0A%0A`;
-  mensaje += `Modalidad: ${entregaElegida === "envio" ? "Envío a domicilio" : "Retiro en el local"}%0A`;
-  mensaje += `Forma de pago: ${formaPagoElegida === "transferencia" ? "Transferencia" : "Efectivo"}%0A`;
-  if(formaPagoElegida === "transferencia"){
-    mensaje += `(Voy a compartir el comprobante por acá)%0A`;
+  mensaje += `\nTotal de la compra${hayProductoPorPeso() ? " (puede ajustarse al pesar)" : ""}: ${formatoPrecio(subtotalCarrito())}\n\n`;
+  mensaje += `Modalidad: ${entregaElegida === "envio" ? "Envío a domicilio" : "Retiro en el local"}\n`;
+  if(formaPagoElegida){
+    mensaje += `Forma de pago: ${ETIQUETAS_PAGO[formaPagoElegida].texto}\n`;
+    if(formaPagoElegida !== "efectivo"){
+      mensaje += `(Coordinamos el pago cuando confirmen el pedido)\n`;
+    }
   }
-  mensaje += `Nombre: ${nombre}%0A`;
-  mensaje += `Teléfono: ${telefono}%0A`;
-  if(direccion) mensaje += `Dirección: ${direccion}%0A`;
-  if(notas) mensaje += `Notas: ${notas}%0A`;
+  mensaje += `Nombre: ${nombre}\n`;
+  if(direccion) mensaje += `Dirección: ${direccion}\n`;
+  if(notas) mensaje += `Notas: ${notas}\n`;
 
-  ultimoLinkWhatsapp = `https://wa.me/${TIENDA.whatsapp}?text=${mensaje}`;
-  window.open(ultimoLinkWhatsapp, "_blank");
+  ultimoMensajeWhatsapp = mensaje;
+  window.open(construirLinkWhatsapp(mensaje), "_blank");
 
   carrito = [];
   guardarCarrito();
   actualizarBadge();
-  datosFormulario = { nombre:"", telefono:"", direccion:"", notas:"" };
+  datosFormulario = { nombre:"", direccion:"", notas:"" };
   vistaCarrito = "confirmacion";
   pintarPanelCarrito();
 }
@@ -1943,7 +1770,7 @@ function pintarVistaConfirmacion(){
   `;
 
   document.getElementById("btnReabrirWsp").onclick = () => {
-    if(ultimoLinkWhatsapp) window.open(ultimoLinkWhatsapp, "_blank");
+    if(ultimoMensajeWhatsapp) window.open(construirLinkWhatsapp(ultimoMensajeWhatsapp), "_blank");
   };
   document.getElementById("btnListoConfirmacion").onclick = () => {
     vistaCarrito = "lista";
@@ -1983,7 +1810,6 @@ pintarDetalleHorario();
 document.getElementById("chipHorario").onclick = () => {
   document.getElementById("detalleHorario").classList.toggle("abierto");
 };
-sincronizarStockEnVivo();
 </script>
 
 </body>
